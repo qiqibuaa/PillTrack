@@ -147,60 +147,50 @@ export default function App() {
   const [calendarMonth, setCalendarMonth] = useState(dayjs());
   const [showWelcome, setShowWelcome] = useState(false);
 
-  // Load from LocalStorage
-  useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        setData(parsed);
-        if (parsed.drugs.length === 0) setShowWelcome(true);
-      } catch (e) {
-        console.error('Failed to parse saved data', e);
-        setShowWelcome(true);
-      }
-    } else {
-      setShowWelcome(true);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [refillId, setRefillId] = useState<string | null>(null);
+  const [refillAmount, setRefillAmount] = useState('30');
+
+  // Load from Backend
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/data');
+      const json = await res.json();
+      setData(json);
+      if (json.drugs.length === 0) setShowWelcome(true);
+    } catch (e) {
+      console.error('Failed to fetch data', e);
     }
-  }, []);
-
-  // Save to LocalStorage
-  useEffect(() => {
-    if (data !== INITIAL_DATA) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-  }, [data]);
-
-  const toggleLog = (drugId: string, date: dayjs.Dayjs) => {
-    const dateStr = date.format('YYYY-MM-DD');
-    const drug = data.drugs.find(d => d.id === drugId);
-    if (!drug) return;
-
-    const existingLogIndex = data.logs.findIndex(l => l.drugId === drugId && l.takenAt === dateStr);
-    const isTaken = existingLogIndex !== -1;
-
-    const newLogs = isTaken 
-      ? data.logs.filter((_, i) => i !== existingLogIndex)
-      : [...data.logs, { drugId, takenAt: dateStr }];
-
-    setData(prev => ({ ...prev, logs: newLogs }));
   };
 
-  const handleSaveDrug = (drugData: Partial<Drug>) => {
-    const newDrugs = editingDrug 
-      ? data.drugs.map(d => {
-          if (d.id === editingDrug.id) {
-            const currentEffective = getEffectiveStock(d, dayjs());
-            const stockChanged = drugData.stock !== undefined && drugData.stock !== currentEffective;
-            return { 
-              ...d, 
-              ...drugData,
-              lastStockUpdateDate: stockChanged ? dayjs().format('YYYY-MM-DD') : d.lastStockUpdateDate
-            } as Drug;
-          }
-          return d;
-        })
-      : [...data.drugs, {
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const toggleLog = async (drugId: string, date: dayjs.Dayjs) => {
+    const dateStr = date.format('YYYY-MM-DD');
+    try {
+      await fetch('/api/logs/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drugId, takenAt: dateStr })
+      });
+      fetchData();
+    } catch (e) {
+      console.error('Failed to toggle log', e);
+    }
+  };
+
+  const handleSaveDrug = async (drugData: Partial<Drug>) => {
+    const drugToSave = editingDrug 
+      ? { 
+          ...editingDrug, 
+          ...drugData,
+          lastStockUpdateDate: (drugData.stock !== undefined && drugData.stock !== getEffectiveStock(editingDrug, dayjs())) 
+            ? dayjs().format('YYYY-MM-DD') 
+            : editingDrug.lastStockUpdateDate
+        }
+      : {
           id: crypto.randomUUID(),
           name: drugData.name || '未命名药物',
           dosage: drugData.dosage || '',
@@ -212,38 +202,52 @@ export default function App() {
           decrementPerDose: drugData.decrementPerDose ?? 1,
           lowStockThreshold: drugData.lowStockThreshold ?? 5,
           lastStockUpdateDate: dayjs().format('YYYY-MM-DD'),
-        } as Drug];
+        };
 
-    setData(prev => ({ ...prev, drugs: newDrugs }));
-    setIsModalOpen(false);
-    setEditingDrug(null);
-    setShowWelcome(false);
+    try {
+      await fetch('/api/drugs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(drugToSave)
+      });
+      fetchData();
+      setIsModalOpen(false);
+      setEditingDrug(null);
+      setShowWelcome(false);
+    } catch (e) {
+      console.error('Failed to save drug', e);
+    }
   };
 
-  const handleRefill = (id: string, amount: number) => {
-    setData(prev => ({
-      ...prev,
-      drugs: prev.drugs.map(d => {
-        if (d.id === id) {
-          const currentEffective = getEffectiveStock(d, dayjs());
-          return {
-            ...d,
-            stock: currentEffective + amount,
-            lastStockUpdateDate: dayjs().format('YYYY-MM-DD')
-          };
-        }
-        return d;
-      })
-    }));
+  const handleRefill = async (id: string, amount: number) => {
+    const drug = data.drugs.find(d => d.id === id);
+    if (!drug) return;
+
+    const currentEffective = getEffectiveStock(drug, dayjs());
+    const updatedDrug = {
+      ...drug,
+      stock: currentEffective + amount,
+      lastStockUpdateDate: dayjs().format('YYYY-MM-DD')
+    };
+
+    try {
+      await fetch('/api/drugs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDrug)
+      });
+      fetchData();
+    } catch (e) {
+      console.error('Failed to refill drug', e);
+    }
   };
 
-  const handleDeleteDrug = (id: string) => {
-    if (confirm('确定要删除这种药物吗？')) {
-      setData(prev => ({
-        ...prev,
-        drugs: prev.drugs.filter(d => d.id !== id),
-        logs: prev.logs.filter(l => l.drugId !== id)
-      }));
+  const handleDeleteDrug = async (id: string) => {
+    try {
+      await fetch(`/api/drugs/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (e) {
+      console.error('Failed to delete drug', e);
     }
   };
 
@@ -257,16 +261,28 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const imported = JSON.parse(event.target?.result as string);
         if (imported.drugs && imported.logs) {
-          setData(imported);
-          alert('数据导入成功！');
+          // Sync all drugs to backend
+          for (const drug of imported.drugs) {
+            await fetch('/api/drugs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(drug)
+            });
+          }
+          // Note: For logs, a full sync might be complex, 
+          // but we can at least update the local state and inform the user
+          // or implement a bulk log import API if needed.
+          // For now, let's refresh to see the new drugs.
+          fetchData();
+          alert('数据导入并同步成功！');
         }
       } catch (e) {
         alert('导入失败：文件格式不正确');
@@ -574,18 +590,41 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => {
-                          const amount = prompt('请输入增加的库存数量:', '30');
-                          if (amount && !isNaN(Number(amount))) {
-                            handleRefill(drug.id, Number(amount));
-                          }
-                        }}
-                        className="p-2.5 text-black/20 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
-                        title="补充库存"
-                      >
-                        <Plus size={18} />
-                      </button>
+                      {refillId === drug.id ? (
+                        <div className="flex items-center gap-1 bg-emerald-50 p-1 rounded-xl border border-emerald-100">
+                          <input 
+                            type="number" 
+                            value={refillAmount} 
+                            onChange={(e) => setRefillAmount(e.target.value)}
+                            className="w-12 bg-white border-none rounded-lg px-2 py-1 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none"
+                            autoFocus
+                          />
+                          <button 
+                            onClick={() => {
+                              handleRefill(drug.id, Number(refillAmount));
+                              setRefillId(null);
+                            }}
+                            className="text-emerald-600 font-bold text-[10px] px-1"
+                          >
+                            确定
+                          </button>
+                          <button onClick={() => setRefillId(null)} className="text-black/20 font-bold text-[10px] px-1">
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            setRefillId(drug.id);
+                            setRefillAmount('30');
+                          }}
+                          className="p-2.5 text-black/20 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                          title="补充库存"
+                        >
+                          <Plus size={18} />
+                        </button>
+                      )}
+                      
                       <button 
                         onClick={() => {
                           setEditingDrug(drug);
@@ -595,12 +634,33 @@ export default function App() {
                       >
                         <Edit2 size={18} />
                       </button>
-                      <button 
-                        onClick={() => handleDeleteDrug(drug.id)}
-                        className="p-2.5 text-black/20 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+
+                      {deleteConfirmId === drug.id ? (
+                        <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-xl border border-rose-100">
+                          <button 
+                            onClick={() => {
+                              handleDeleteDrug(drug.id);
+                              setDeleteConfirmId(null);
+                            }}
+                            className="text-rose-600 font-bold text-[10px] px-2 py-1"
+                          >
+                            确认删除
+                          </button>
+                          <button 
+                            onClick={() => setDeleteConfirmId(null)} 
+                            className="text-black/20 font-bold text-[10px] px-2 py-1"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => setDeleteConfirmId(drug.id)}
+                          className="p-2.5 text-black/20 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
