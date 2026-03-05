@@ -106,19 +106,6 @@ const INITIAL_DATA: PillTrackData = {
       decrementPerDose: 1,
       lowStockThreshold: 10,
       lastStockUpdateDate: '2026-03-05'
-    },
-    {
-      id: '3',
-      name: '中药',
-      dosage: '晚饭后',
-      amount: '1袋',
-      interval: 2,
-      startDate: '2024-01-01',
-      color: 'bg-emerald-500',
-      stock: 30,
-      decrementPerDose: 1,
-      lowStockThreshold: 5,
-      lastStockUpdateDate: '2024-01-01'
     }
   ],
   logs: []

@@ -48,7 +48,6 @@ if (drugCount.count === 0) {
   // Default data as requested by user (based on their current app state)
   insertDrug.run('1', '激素药', '早饭后', '1粒', 2, '2026-03-05', 'bg-blue-500', 29, 1, 5, '2026-03-05');
   insertDrug.run('2', '羟氯喹', '早上', '1粒', 1, '2026-03-05', 'bg-rose-500', 56, 1, 10, '2026-03-05');
-  insertDrug.run('3', '中药', '晚饭后', '1袋', 2, '2024-01-01', 'bg-emerald-500', 30, 1, 5, '2024-01-01');
 
   db.prepare("INSERT INTO settings (key, value) VALUES ('notificationsEnabled', 'false')").run();
   db.prepare("INSERT INTO settings (key, value) VALUES ('language', 'zh-cn')").run();
