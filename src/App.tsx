@@ -106,6 +106,19 @@ const INITIAL_DATA: PillTrackData = {
       decrementPerDose: 2,
       lowStockThreshold: 10,
       lastStockUpdateDate: '2026-03-05'
+    },
+    {
+      id: '3',
+      name: '中药',
+      dosage: '晚饭后',
+      amount: '1袋',
+      interval: 2,
+      startDate: '2024-01-01',
+      color: 'bg-emerald-500',
+      stock: 30,
+      decrementPerDose: 1,
+      lowStockThreshold: 5,
+      lastStockUpdateDate: '2024-01-01'
     }
   ],
   logs: []
@@ -140,6 +153,7 @@ const getEffectiveStock = (drug: Drug, today: dayjs.Dayjs) => {
 
 export default function App() {
   const [data, setData] = useState<PillTrackData>(INITIAL_DATA);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
   const [view, setView] = useState<'daily' | 'calendar' | 'manage'>('daily');
@@ -160,6 +174,8 @@ export default function App() {
       if (json.drugs.length === 0) setShowWelcome(true);
     } catch (e) {
       console.error('Failed to fetch data', e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -299,6 +315,17 @@ export default function App() {
     const dateStr = date.format('YYYY-MM-DD');
     return data.logs.some(l => l.drugId === drugId && l.takenAt === dateStr);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-bold text-black/40 uppercase tracking-widest">加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (showWelcome && data.drugs.length === 0) {
     return (
