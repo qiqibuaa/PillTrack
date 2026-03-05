@@ -12,6 +12,8 @@ export interface Drug {
   color: string;
   stock: number;
   decrementPerDose: number;
+  lowStockThreshold?: number;
+  lastStockUpdateDate?: string; // Date when stock was last manually set/refilled
 }
 
 export interface MedicationLog {

@@ -86,25 +86,56 @@ const INITIAL_DATA: PillTrackData = {
       name: '激素药',
       dosage: '早饭后',
       amount: '1粒',
-      interval: 2,
+      interval: 1,
       startDate: '2026-03-05',
       color: 'bg-blue-500',
       stock: 30,
-      decrementPerDose: 1
+      decrementPerDose: 1,
+      lowStockThreshold: 5,
+      lastStockUpdateDate: '2026-03-05'
     },
     {
       id: '2',
       name: '羟氯喹',
       dosage: '晚饭后',
       amount: '2粒',
-      interval: 2,
+      interval: 1,
       startDate: '2026-03-05',
       color: 'bg-rose-500',
       stock: 60,
-      decrementPerDose: 2
+      decrementPerDose: 2,
+      lowStockThreshold: 10,
+      lastStockUpdateDate: '2026-03-05'
     }
   ],
   logs: []
+};
+
+const getEffectiveStock = (drug: Drug, today: dayjs.Dayjs) => {
+  const start = dayjs(drug.lastStockUpdateDate || drug.startDate).startOf('day');
+  const end = today.startOf('day');
+  
+  if (end.isBefore(start)) return drug.stock;
+
+  let dosesCount = 0;
+  let current = start;
+  const cycle = (drug.interval || 0) + 1;
+  
+  // Optimization: calculate how many cycles passed
+  const diffDays = end.diff(start, 'day');
+  // We need to check if 'start' was a dose day. 
+  // isTakingDrugOnDate(drug, start) is always true if start is drug.startDate.
+  // If it's lastStockUpdateDate, we need to check.
+  
+  // Simple loop for now as it's usually not many days
+  while (current.isBefore(end) || current.isSame(end)) {
+    if (isTakingDrugOnDate(drug, current)) {
+      dosesCount++;
+    }
+    current = current.add(1, 'day');
+  }
+
+  return Number((drug.stock - dosesCount * (drug.decrementPerDose || 1)).toFixed(2));
 };
 
 export default function App() {
@@ -152,24 +183,23 @@ export default function App() {
       ? data.logs.filter((_, i) => i !== existingLogIndex)
       : [...data.logs, { drugId, takenAt: dateStr }];
 
-    const newDrugs = data.drugs.map(d => {
-      if (d.id === drugId && d.stock !== undefined && d.decrementPerDose !== undefined) {
-        return { 
-          ...d, 
-          stock: isTaken 
-            ? Number((d.stock + d.decrementPerDose).toFixed(2)) 
-            : Number(Math.max(0, d.stock - d.decrementPerDose).toFixed(2)) 
-        };
-      }
-      return d;
-    });
-
-    setData(prev => ({ ...prev, drugs: newDrugs, logs: newLogs }));
+    setData(prev => ({ ...prev, logs: newLogs }));
   };
 
   const handleSaveDrug = (drugData: Partial<Drug>) => {
     const newDrugs = editingDrug 
-      ? data.drugs.map(d => d.id === editingDrug.id ? { ...d, ...drugData } as Drug : d)
+      ? data.drugs.map(d => {
+          if (d.id === editingDrug.id) {
+            const currentEffective = getEffectiveStock(d, dayjs());
+            const stockChanged = drugData.stock !== undefined && drugData.stock !== currentEffective;
+            return { 
+              ...d, 
+              ...drugData,
+              lastStockUpdateDate: stockChanged ? dayjs().format('YYYY-MM-DD') : d.lastStockUpdateDate
+            } as Drug;
+          }
+          return d;
+        })
       : [...data.drugs, {
           id: crypto.randomUUID(),
           name: drugData.name || '未命名药物',
@@ -180,12 +210,31 @@ export default function App() {
           color: drugData.color || DRUG_COLORS[data.drugs.length % DRUG_COLORS.length],
           stock: drugData.stock ?? 0,
           decrementPerDose: drugData.decrementPerDose ?? 1,
+          lowStockThreshold: drugData.lowStockThreshold ?? 5,
+          lastStockUpdateDate: dayjs().format('YYYY-MM-DD'),
         } as Drug];
 
     setData(prev => ({ ...prev, drugs: newDrugs }));
     setIsModalOpen(false);
     setEditingDrug(null);
     setShowWelcome(false);
+  };
+
+  const handleRefill = (id: string, amount: number) => {
+    setData(prev => ({
+      ...prev,
+      drugs: prev.drugs.map(d => {
+        if (d.id === id) {
+          const currentEffective = getEffectiveStock(d, dayjs());
+          return {
+            ...d,
+            stock: currentEffective + amount,
+            lastStockUpdateDate: dayjs().format('YYYY-MM-DD')
+          };
+        }
+        return d;
+      })
+    }));
   };
 
   const handleDeleteDrug = (id: string) => {
@@ -345,16 +394,18 @@ export default function App() {
                             <span className="w-1 h-1 bg-black/10 rounded-full" />
                             <span>{drug.amount}</span>
                           </div>
-                          {drug.stock !== undefined && (
-                            <div className={cn(
-                              "text-[10px] font-bold mt-1",
-                              drug.stock < (drug.decrementPerDose || 1) * 3 
-                                ? "text-rose-500" 
-                                : getDrugVariants(drug.color).text
-                            )}>
-                              剩余: {drug.stock}
-                            </div>
-                          )}
+                          {drug.stock !== undefined && (() => {
+                            const effectiveStock = getEffectiveStock(drug, dayjs());
+                            const isLow = effectiveStock <= (drug.lowStockThreshold ?? 5);
+                            return (
+                              <div className={cn(
+                                "text-[10px] font-bold mt-1",
+                                isLow ? "text-rose-500 animate-pulse" : getDrugVariants(drug.color).text
+                              )}>
+                                剩余: {effectiveStock} {isLow && "(库存不足)"}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                       <button 
@@ -504,23 +555,37 @@ export default function App() {
                           <p className="text-xs text-black/40 font-bold uppercase tracking-wider">
                             每隔 {drug.interval} 天服用
                           </p>
-                          {drug.stock !== undefined && (
-                            <>
-                              <span className="w-1 h-1 bg-black/10 rounded-full" />
-                              <p className={cn(
-                                "text-xs font-bold",
-                                drug.stock < (drug.decrementPerDose || 1) * 3 
-                                  ? "text-rose-500" 
-                                  : getDrugVariants(drug.color).text
-                              )}>
-                                库存: {drug.stock}
-                              </p>
-                            </>
-                          )}
+                          {drug.stock !== undefined && (() => {
+                            const effectiveStock = getEffectiveStock(drug, dayjs());
+                            const isLow = effectiveStock <= (drug.lowStockThreshold ?? 5);
+                            return (
+                              <>
+                                <span className="w-1 h-1 bg-black/10 rounded-full" />
+                                <p className={cn(
+                                  "text-xs font-bold",
+                                  isLow ? "text-rose-500" : getDrugVariants(drug.color).text
+                                )}>
+                                  库存: {effectiveStock} {isLow && "!"}
+                                </p>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => {
+                          const amount = prompt('请输入增加的库存数量:', '30');
+                          if (amount && !isNaN(Number(amount))) {
+                            handleRefill(drug.id, Number(amount));
+                          }
+                        }}
+                        className="p-2.5 text-black/20 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                        title="补充库存"
+                      >
+                        <Plus size={18} />
+                      </button>
                       <button 
                         onClick={() => {
                           setEditingDrug(drug);
@@ -650,6 +715,7 @@ function DrugModal({ isOpen, onClose, onSave, editingDrug }: {
               ...data,
               interval: Number(data.interval),
               stock: Number(data.stock),
+              lowStockThreshold: Number(data.lowStockThreshold),
               decrementPerDose: Number(data.decrementPerDose),
               color: selectedColor,
             });
@@ -720,17 +786,6 @@ function DrugModal({ isOpen, onClose, onSave, editingDrug }: {
                 <span className="text-sm font-bold pr-4">天服用一次</span>
               </div>
             </div>
-            
-            <div className="bg-emerald-50 p-4 rounded-2xl space-y-2 border border-emerald-100">
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">服药预览 (前5次)</p>
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {previewDates.map((d, i) => (
-                  <div key={i} className="bg-white px-3 py-2 rounded-xl border border-emerald-200 text-xs font-bold text-emerald-700 whitespace-nowrap">
-                    {d}
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -749,18 +804,27 @@ function DrugModal({ isOpen, onClose, onSave, editingDrug }: {
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-black/30">当前库存</label>
               <input 
                 type="number" name="stock" min="0" step="0.1"
-                defaultValue={editingDrug?.stock ?? 0}
+                defaultValue={editingDrug ? getEffectiveStock(editingDrug, dayjs()) : 0}
                 className="w-full bg-[#F5F5F5] border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-black/30">单次扣除</label>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-black/30">库存预警阈值</label>
               <input 
-                type="number" name="decrementPerDose" min="0" step="0.1"
-                defaultValue={editingDrug?.decrementPerDose ?? 1}
+                type="number" name="lowStockThreshold" min="0" step="0.1"
+                defaultValue={editingDrug?.lowStockThreshold ?? 5}
                 className="w-full bg-[#F5F5F5] border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-black/30">单次扣除</label>
+            <input 
+              type="number" name="decrementPerDose" min="0" step="0.1"
+              defaultValue={editingDrug?.decrementPerDose ?? 1}
+              className="w-full bg-[#F5F5F5] border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-emerald-500 transition-all outline-none font-bold"
+            />
           </div>
 
           <div className="pt-4">
