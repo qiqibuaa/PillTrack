@@ -28,6 +28,51 @@ const DRUG_COLORS = [
   'bg-rose-500', 'bg-indigo-500', 'bg-cyan-500', 'bg-orange-500'
 ];
 
+const DRUG_COLOR_VARIANTS: Record<string, { 
+  bg: string, 
+  text: string, 
+  border: string, 
+  bgLight: string,
+  hoverBorder: string
+}> = {
+  'bg-emerald-500': { 
+    bg: 'bg-emerald-500', text: 'text-emerald-500', border: 'border-emerald-500', 
+    bgLight: 'bg-emerald-500/10', hoverBorder: 'hover:border-emerald-500/30'
+  },
+  'bg-blue-500': { 
+    bg: 'bg-blue-500', text: 'text-blue-500', border: 'border-blue-500', 
+    bgLight: 'bg-blue-500/10', hoverBorder: 'hover:border-blue-500/30'
+  },
+  'bg-violet-500': { 
+    bg: 'bg-violet-500', text: 'text-violet-500', border: 'border-violet-500', 
+    bgLight: 'bg-violet-500/10', hoverBorder: 'hover:border-violet-500/30'
+  },
+  'bg-amber-500': { 
+    bg: 'bg-amber-500', text: 'text-amber-500', border: 'border-amber-500', 
+    bgLight: 'bg-amber-500/10', hoverBorder: 'hover:border-amber-500/30'
+  },
+  'bg-rose-500': { 
+    bg: 'bg-rose-500', text: 'text-rose-500', border: 'border-rose-500', 
+    bgLight: 'bg-rose-500/10', hoverBorder: 'hover:border-rose-500/30'
+  },
+  'bg-indigo-500': { 
+    bg: 'bg-indigo-500', text: 'text-indigo-500', border: 'border-indigo-500', 
+    bgLight: 'bg-indigo-500/10', hoverBorder: 'hover:border-indigo-500/30'
+  },
+  'bg-cyan-500': { 
+    bg: 'bg-cyan-500', text: 'text-cyan-500', border: 'border-cyan-500', 
+    bgLight: 'bg-cyan-500/10', hoverBorder: 'hover:border-cyan-500/30'
+  },
+  'bg-orange-500': { 
+    bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-500', 
+    bgLight: 'bg-orange-500/10', hoverBorder: 'hover:border-orange-500/30'
+  },
+};
+
+const getDrugVariants = (color: string) => {
+  return DRUG_COLOR_VARIANTS[color] || DRUG_COLOR_VARIANTS['bg-emerald-500'];
+};
+
 const STORAGE_KEY = 'PILLTRACK_DATA';
 
 const INITIAL_DATA: PillTrackData = {
@@ -303,7 +348,9 @@ export default function App() {
                           {drug.stock !== undefined && (
                             <div className={cn(
                               "text-[10px] font-bold mt-1",
-                              drug.stock < (drug.decrementPerDose || 1) * 3 ? "text-rose-500" : "text-emerald-500"
+                              drug.stock < (drug.decrementPerDose || 1) * 3 
+                                ? "text-rose-500" 
+                                : getDrugVariants(drug.color).text
                             )}>
                               剩余: {drug.stock}
                             </div>
@@ -315,8 +362,8 @@ export default function App() {
                         className={cn(
                           "w-12 h-12 rounded-2xl flex items-center justify-center transition-all border-2",
                           isLogged(drug.id, selectedDate)
-                            ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                            : "bg-white border-black/5 text-black/10 hover:border-emerald-500/30"
+                            ? `${drug.color} border-transparent text-white shadow-lg`
+                            : `bg-white border-black/5 text-black/10 ${getDrugVariants(drug.color).hoverBorder}`
                         )}
                       >
                         <CheckCircle2 size={28} />
@@ -399,14 +446,15 @@ export default function App() {
                         <div className="mt-1 space-y-0.5">
                           {drugsOnDay.map(drug => {
                             const taken = isLogged(drug.id, day);
+                            const variants = getDrugVariants(drug.color);
                             return (
                               <div 
                                 key={drug.id} 
                                 className={cn(
                                   "px-1 py-0.5 rounded-[4px] text-[8px] font-bold truncate transition-all flex items-center gap-1 border", 
                                   taken 
-                                    ? `${drug.color} text-white border-transparent shadow-sm` 
-                                    : `${drug.color.replace('bg-', 'text-')} ${drug.color.replace('bg-', 'border-')} ${drug.color}/10`
+                                    ? `${variants.bg} text-white border-transparent shadow-sm` 
+                                    : `${variants.text} ${variants.border} ${variants.bgLight}`
                                 )} 
                               >
                                 <span className="truncate">{drug.name}</span>
@@ -461,7 +509,9 @@ export default function App() {
                               <span className="w-1 h-1 bg-black/10 rounded-full" />
                               <p className={cn(
                                 "text-xs font-bold",
-                                drug.stock < (drug.decrementPerDose || 1) * 3 ? "text-rose-500" : "text-emerald-500"
+                                drug.stock < (drug.decrementPerDose || 1) * 3 
+                                  ? "text-rose-500" 
+                                  : getDrugVariants(drug.color).text
                               )}>
                                 库存: {drug.stock}
                               </p>
