@@ -572,17 +572,6 @@ export default function App() {
           <CalendarIcon size={26} />
           <span className="text-[9px] font-black uppercase tracking-[0.15em]">日历</span>
         </button>
-        <div className="relative -top-8">
-          <button 
-            onClick={() => {
-              setEditingDrug(null);
-              setIsModalOpen(true);
-            }}
-            className="w-16 h-16 bg-emerald-500 text-white rounded-[24px] shadow-2xl shadow-emerald-500/40 flex items-center justify-center hover:scale-110 active:scale-90 transition-all rotate-45"
-          >
-            <Plus size={32} className="-rotate-45" />
-          </button>
-        </div>
         <button 
           onClick={() => setView('manage')}
           className={cn(
