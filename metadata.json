@@ -1,0 +1,5 @@
+{
+  "name": "PillTrack (药提醒)",
+  "description": "A personalized medication management assistant with custom frequency scheduling and calendar view.",
+  "requestFramePermissions": ["notifications"]
+}
